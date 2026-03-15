@@ -55,7 +55,10 @@ class CriticPPOTrainer(ABC):
             self.args.use_dynamic_batch,
         )
 
-        self.critic_loss_fn = ValueLoss(value_clip)
+        self.critic_loss_fn = ValueLoss(
+            value_clip,
+            unbiased_loss_max_tokens=getattr(self.args, "unbiased_loss_max_tokens", 0),
+        )
 
         # Mixtral 8x7b
         self.aux_loss = self.args.aux_loss_coef > 1e-8

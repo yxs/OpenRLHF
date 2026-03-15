@@ -78,6 +78,7 @@ class ActorPPOTrainer(ABC):
                 self.args.vllm_is_truncated_threshold if self.args.enable_vllm_is_correction else None
             ),
             vllm_is_correction_type=self.args.vllm_is_correction_type,
+            unbiased_loss_max_tokens=getattr(self.args, "unbiased_loss_max_tokens", 0),
         )
 
         # Mixtral 8x7b

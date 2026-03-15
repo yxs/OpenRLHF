@@ -87,6 +87,7 @@ class PolicyLoss(nn.Module):
         enable_vllm_is_correction: bool = False,
         vllm_is_truncated_threshold: list = None,
         vllm_is_correction_type: str = "tis",
+        unbiased_loss_max_tokens: int = 0,
     ) -> None:
         super().__init__()
         self.clip_eps_low = clip_eps_low
@@ -97,6 +98,7 @@ class PolicyLoss(nn.Module):
         self.enable_vllm_is_correction = enable_vllm_is_correction
         self.vllm_is_truncated_threshold = vllm_is_truncated_threshold
         self.vllm_is_correction_type = vllm_is_correction_type
+        self.unbiased_loss_max_tokens = unbiased_loss_max_tokens
 
         # GSPO requires sequence-level loss
         if policy_loss_type == "gspo":
@@ -172,11 +174,17 @@ class PolicyLoss(nn.Module):
                 loss = vllm_is * loss
             vllm_kl = masked_mean(rollout_log_probs - old_log_probs, action_mask, dim=None)
 
-        loss = (
-            masked_mean(loss, action_mask, dim=None)
-            if self.token_level_loss
-            else masked_mean(loss, action_mask, dim=-1).mean()
-        )
+        if self.unbiased_loss_max_tokens > 0:
+            # Dr. GRPO: unbiased loss normalization (arxiv 2503.20783)
+            # Use fixed max_tokens as denominator instead of variable sequence length
+            # to avoid response-level length bias in optimization.
+            loss = (loss * action_mask).sum(dim=-1) / self.unbiased_loss_max_tokens
+            loss = loss.mean()
+        elif self.token_level_loss:
+            loss = masked_mean(loss, action_mask, dim=None)
+        else:
+            loss = masked_mean(loss, action_mask, dim=-1).mean()
+
         clip_ratio = masked_mean(torch.lt(surr2, surr1).float(), action_mask, dim=None)
         ppo_kl = masked_mean(-log_ratio.detach(), action_mask, dim=None)
         return loss, clip_ratio, ppo_kl, vllm_kl
@@ -187,10 +195,11 @@ class ValueLoss(nn.Module):
     Value Loss for PPO
     """
 
-    def __init__(self, clip_eps: float = None, token_level_loss: bool = True) -> None:
+    def __init__(self, clip_eps: float = None, token_level_loss: bool = True, unbiased_loss_max_tokens: int = 0) -> None:
         super().__init__()
         self.clip_eps = clip_eps
         self.token_level_loss = token_level_loss
+        self.unbiased_loss_max_tokens = unbiased_loss_max_tokens
 
     def forward(
         self,
@@ -207,11 +216,14 @@ class ValueLoss(nn.Module):
         else:
             loss = (values - returns) ** 2
 
-        loss = (
-            masked_mean(loss, action_mask, dim=None)
-            if self.token_level_loss
-            else masked_mean(loss, action_mask, dim=-1).mean()
-        )
+        if self.unbiased_loss_max_tokens > 0:
+            loss = (loss * action_mask).sum(dim=-1) / self.unbiased_loss_max_tokens
+            loss = loss.mean()
+        elif self.token_level_loss:
+            loss = masked_mean(loss, action_mask, dim=None)
+        else:
+            loss = masked_mean(loss, action_mask, dim=-1).mean()
+
         return 0.5 * loss
 
 

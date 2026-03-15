@@ -409,6 +409,14 @@ if __name__ == "__main__":
         help="disable dividing by std for advantages while keeping mean normalization",
     )
     parser.add_argument(
+        "--unbiased_loss_max_tokens",
+        type=int,
+        default=0,
+        help="Dr. GRPO unbiased loss: use fixed max_tokens as denominator instead of variable sequence length "
+        "to avoid response-level length bias (arxiv 2503.20783). Set to max_new_tokens (generation budget). "
+        "0 means disabled (use default masked_mean).",
+    )
+    parser.add_argument(
         "--overlong_buffer_len", type=float, default=None, help="reward with optional overlong penalty"
     )
     parser.add_argument("--overlong_penalty_factor", type=float, default=1, help="overlong penalty factor")
